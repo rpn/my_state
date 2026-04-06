@@ -1,0 +1,15 @@
+.ninja_deps
+.ninja_log
+build.ninja
+/main.exe
+o/*
+build/
+CMakeLists.txt
+nodejs/node_modules/
+vue_test/node_modules/
+nodejs_api/node_modules/
+/new_api/node_modules
+/nodejs_api_old/node_modules
+/electron_app/snapshots
+/locals.yml
+/archives.zip

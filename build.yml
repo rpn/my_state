@@ -1,0 +1,54 @@
+﻿# build.yml
+includes:
+- archives/rakelike.yml
+
+stocks:
+  watch: $(
+    $run()
+    $fs#watch_files(@list, $watch)
+  )
+
+attributes:
+  locals: $load_value('locals.yml') || {}
+  PROJECT_NAME: main
+  TARGET: 'main.exe'
+
+  googletest: @locals/$at(includes/googletest, '../googletest/googletest')
+
+  DEFAULT: @locals/$at(default, $build_cmake)
+  EXCLUDES:
+  - '\\/_'
+  - 'gtest_main.cc'
+  - 'gtest-all.cc'
+
+  THIS_PATH: __DIR__
+  PRJ_PATH: $fs#dirname(__DIR__)
+
+  NINJA_FILE: 'build.ninja'
+  CMAKE_FILE: 'CMakeLists.txt'
+
+  CC: 'g++'
+
+  RELEASE_OPTIONS:
+  - '-O3'
+  - '-g'
+  - '-std=c++17'
+  - '-DNDEBUG'
+
+  CMAKE_FLAGS:
+  - 'set(CMAKE_CXX_STANDARD 17)'
+  - 'set(CMAKE_CXX_STANDARD_REQUIRED ON)'
+  - 'set(CMAKE_CXX_EXTENSIONS OFF)'
+
+  SEARCH_PATHS:
+  - src
+  - "{{@googletest}}/src"
+
+  INCLUDES:
+  - @googletest
+  - "{{@googletest}}/include"
+
+  CLEANS:
+  - 'build/'
+
+startup: $$cd(__DIR__)
