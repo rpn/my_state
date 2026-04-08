@@ -61,7 +61,8 @@ struct RootSm {
             ctx.sub = CombatSubState::None;
         };
 
-        auto toCombat = [](Context& ctx) {
+        auto toCombat = [](const EnemySpotted& e, Context& ctx) {
+            ctx.target = e.target;
             ctx.top = TopState::Combat;
             ctx.sub = CombatSubState::Chase;
         };
@@ -80,6 +81,7 @@ TEST(SmlTest4, test1)
     sml::sm<RootSm> sm{ ctx };
 
     sm.process_event(EnemySpotted{123});
+    ASSERT_EQ(123, ctx.target);
     ASSERT_EQ(TopState::Combat, ctx.top);
     ASSERT_EQ(CombatSubState::Chase, ctx.sub);
 }
