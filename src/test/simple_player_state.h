@@ -30,8 +30,8 @@ enum class PlayerStateType {
 };
 
 struct MoveIntent {
-    float velocity;
-    bool is_slide;
+    float velocity = 0;
+    bool is_slide = false;
 };
 
 struct PlayerState {

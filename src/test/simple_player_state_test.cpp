@@ -19,21 +19,21 @@ TEST(SimplePlayerStateTest1, test1)
 	ASSERT_TRUE(p_view);
 	ASSERT_EQ(PlayerStateType::IDLE, p_view->state());
 
-	mi.velocity = 1.0f;
+	mi.velocity = 0.5f;
 	ps.tick(1.0f, mi);
 	ASSERT_EQ(PlayerStateType::WALK, ps.state());
 	ASSERT_NE(p_view, ps.player_view());
 	p_view = ps.player_view();
 	ASSERT_EQ(PlayerStateType::WALK, p_view->state());
 
-	mi.velocity = 10.0f;
+	mi.velocity = 1.0f;
 	ps.tick(1.0f, mi);
 	ASSERT_EQ(PlayerStateType::RUN, ps.state());
 	ASSERT_NE(p_view, ps.player_view());
 	p_view = ps.player_view();
 	ASSERT_EQ(PlayerStateType::RUN, p_view->state());
 
-	mi.velocity = 1.0f;
+	mi.velocity = 0.5f;
 	ps.tick(1.0f, mi);
 	ASSERT_EQ(PlayerStateType::WALK, ps.state());
 	ASSERT_NE(p_view, ps.player_view());
