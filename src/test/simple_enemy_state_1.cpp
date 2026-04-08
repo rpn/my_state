@@ -401,16 +401,19 @@ struct ShooterState {
 	ShooterStateType state_ {};
 	float interval_ = 0;
 	std::vector<std::weak_ptr<MyQue<float>>> shoots_;
+	std::shared_ptr<ShooterView> p_view_;
 
 	void tick(float delta_time)
 	{
 		interval_ += delta_time;
 		if (interval_ < 1.0f) {
 			state_ = ShooterStateType::IDLE;
+			update_view();
 			return;
 		}
 		interval_ = 0;
 		state_ = ShooterStateType::SHOOT;
+		update_view();
 		shoot(1.0f);
 	}
 
@@ -431,6 +434,20 @@ struct ShooterState {
 		return n;
 	}
 
+	std::shared_ptr<ShooterView> get_view()
+	{
+		if (p_view_)
+			return p_view_;
+		p_view_ = create_view();
+		return p_view_;
+	}
+
+	void update_view()
+	{
+		if (p_view_)
+			p_view_ = create_view();
+	}
+
 	std::shared_ptr<ShooterView> create_view()
 	{
 		auto p = std::make_shared<ShooterView>();
@@ -444,17 +461,19 @@ struct ShooterState {
 TEST(SimpleEnemyState, test_1)
 {
 	ShooterState ss;
-	auto p_view = ss.create_view();
+	auto p_view = ss.get_view();
 	ASSERT_TRUE(p_view);
 
 	ASSERT_EQ(ShooterStateType::IDLE, p_view->state());
 	ss.tick(1.0f);	
-	//ASSERT_EQ(ShooterStateType::IDLE, p_view->state());
 
 	ASSERT_TRUE(p_view->dispatch_shoot([](float speed) {
 		ASSERT_EQ(1, speed);
 	}));
 	ASSERT_FALSE(p_view->dispatch_shoot());
+
+	p_view = ss.get_view();
+	ASSERT_EQ(ShooterStateType::SHOOT, p_view->state());
 }
 
 
