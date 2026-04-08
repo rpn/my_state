@@ -53,19 +53,19 @@ struct timeout_machine {
 	auto operator()() const {
 		using namespace sml;
 		return make_transition_table(
-				// waitingに入る時にTimerを確保
-				*"waiting"_s + on_entry<_> / allocate_timer,
+			// waitingに入る時にTimerを確保
+			*"waiting"_s + on_entry<_> / allocate_timer,
 
 			// 評価順序は記述した順になります
 			
-				// ① イベント反映後に3秒到達するなら "next_state" へ遷移
-				 "waiting"_s + event<on_update> [is_timeout] = "next_state"_s,
+			// ① イベント反映後に3秒到達するなら "next_state" へ遷移
+			"waiting"_s + event<on_update> [is_timeout] = "next_state"_s,
 			
 			// ② 経過していなければ（上の条件から漏れたら）、時間を加算する（遷移はしない）
-			 "waiting"_s + event<on_update>              / tick
+			"waiting"_s + event<on_update>              / tick,
 
-				// next_stateに入る時にTimerを破棄
-				,"next_state"_s + on_entry<_> / release_timer
+			// next_stateに入る時にTimerを破棄
+			"next_state"_s + on_entry<_> / release_timer
 		);
 	}
 };
