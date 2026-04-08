@@ -53,7 +53,11 @@ struct CombatSm {
         };
 
         return make_transition_table(
+            // 初期状態は Chase
+            // Chase 状態で InRange イベントが来たら、toAttack を実行して Attack へ遷移
             *state<class Chase> + event<InRange> / toAttack = state<class Attack>,
+
+            // Attack 状態で OutOfRange イベントが来たら、toChase を実行して Chase へ遷移
              state<class Attack> + event<OutOfRange> / toChase = state<class Chase>
         );
     }
@@ -79,7 +83,11 @@ struct RootSm {
         };
 
         return make_transition_table(
+            // 初期状態は Patrol
+            // Patrol 状態で EnemySpotted を受け、canEnterCombat が true のときだけ toCombat を実行して CombatSm へ遷移
             *state<class Patrol> + event<EnemySpotted> [canEnterCombat] / toCombat = state<CombatSm>,
+
+            // CombatSm 状態で EnemyLost を受けたら、toPatrol を実行して Patrol へ戻る
              state<CombatSm> + event<EnemyLost> / toPatrol = state<class Patrol>
         );
     }
