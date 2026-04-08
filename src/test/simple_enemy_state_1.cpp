@@ -382,14 +382,14 @@ struct ShooterView {
 	}
 
 	template <typename F>
-	bool handle_shoot(F f)
+	bool dispatch_shoot(F f)
 	{
 		if (p_shoot_que_)
 			return p_shoot_que_->invoke(std::forward<F>(f));
 		return false;
 	}
 
-	std::optional<float> handle_shoot()
+	std::optional<float> dispatch_shoot()
 	{
 		if (p_shoot_que_)
 			return p_shoot_que_->pop();
@@ -451,10 +451,10 @@ TEST(SimpleEnemyState, test_1)
 	ss.tick(1.0f);	
 	//ASSERT_EQ(ShooterStateType::IDLE, p_view->state());
 
-	ASSERT_TRUE(p_view->handle_shoot([](float speed) {
+	ASSERT_TRUE(p_view->dispatch_shoot([](float speed) {
 		ASSERT_EQ(1, speed);
 	}));
-	ASSERT_FALSE(p_view->handle_shoot());
+	ASSERT_FALSE(p_view->dispatch_shoot());
 }
 
 
