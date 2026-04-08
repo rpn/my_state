@@ -12,6 +12,9 @@ struct EnemySpotted {
 	int target = 0;
 };
 struct EnemyLost {};
+struct on_update {
+    float delta_time = 0.0f;
+};
 struct InRange {};
 struct OutOfRange {};
 
@@ -29,6 +32,7 @@ enum class CombatSubState {
 
 struct Context {
 	int target = 0;
+    float lost_wait_elapsed = 0.0f;
     TopState top = TopState::Patrol;
     CombatSubState sub = CombatSubState::None;
     std::function<bool()> spotted_transition_decider = [] {
@@ -36,6 +40,8 @@ struct Context {
         static thread_local std::bernoulli_distribution coin_flip{0.5};
         return coin_flip(rng);
     };
+
+    std::vector<std::string> logger;
 };
 
 struct CombatSm {
@@ -70,6 +76,8 @@ struct RootSm {
         auto toPatrol = [](Context& ctx) {
             ctx.top = TopState::Patrol;
             ctx.sub = CombatSubState::None;
+            ctx.lost_wait_elapsed = 0.0f;
+            ctx.target = 0;
         };
 
         auto toCombat = [](const EnemySpotted& e, Context& ctx) {
@@ -82,13 +90,31 @@ struct RootSm {
             return ctx.spotted_transition_decider();
         };
 
+        auto beginLostWait = [](Context& ctx) {
+            ctx.lost_wait_elapsed = 0.0f;
+            ctx.top = TopState::Combat;
+            ctx.sub = CombatSubState::None;
+        };
+
+        auto tickLostWait = [](const on_update& e, Context& ctx) {
+            ctx.lost_wait_elapsed += e.delta_time;
+        };
+
+        auto isLostWaitDone = [](const on_update& e, const Context& ctx) {
+            return (ctx.lost_wait_elapsed + e.delta_time) >= 1.0f;
+        };
+
         return make_transition_table(
             // 初期状態は Patrol
             // Patrol 状態で EnemySpotted を受け、canEnterCombat が true のときだけ toCombat を実行して CombatSm へ遷移
             *state<class Patrol> + event<EnemySpotted> [canEnterCombat] / toCombat = state<CombatSm>,
 
-            // CombatSm 状態で EnemyLost を受けたら、toPatrol を実行して Patrol へ戻る
-             state<CombatSm> + event<EnemyLost> / toPatrol = state<class Patrol>
+            // CombatSm 状態で EnemyLost を受けたら、待機状態へ入る
+             state<CombatSm> + event<EnemyLost> / beginLostWait = state<class LostAfterEnemyLost>,
+
+            // 待機中は on_update で経過時間を積算し、1秒到達で Patrol へ戻る
+             state<class LostAfterEnemyLost> + event<on_update> [isLostWaitDone] / toPatrol = state<class Patrol>,
+             state<class LostAfterEnemyLost> + event<on_update> / tickLostWait
         );
     }
 };
@@ -116,6 +142,31 @@ TEST(SmlTest4, spotted_but_not_transitioned)
     ASSERT_EQ(0, ctx.target);
     ASSERT_EQ(TopState::Patrol, ctx.top);
     ASSERT_EQ(CombatSubState::None, ctx.sub);
+}
+
+TEST(SmlTest4, enemy_lost_waits_1s_then_returns_patrol)
+{
+    Context ctx;
+    ctx.spotted_transition_decider = [] { return true; };
+    sml::sm<RootSm> sm{ ctx };
+
+    sm.process_event(EnemySpotted{123});
+    ASSERT_EQ(TopState::Combat, ctx.top);
+
+    sm.process_event(EnemyLost{});
+    ASSERT_EQ(TopState::Combat, ctx.top);
+    ASSERT_EQ(CombatSubState::None, ctx.sub);
+    ASSERT_EQ(0.0f, ctx.lost_wait_elapsed);
+
+    sm.process_event(on_update{0.4f});
+    ASSERT_EQ(TopState::Combat, ctx.top);
+    ASSERT_EQ(0.4f, ctx.lost_wait_elapsed);
+
+    sm.process_event(on_update{0.6f});
+    ASSERT_EQ(TopState::Patrol, ctx.top);
+    ASSERT_EQ(CombatSubState::None, ctx.sub);
+    ASSERT_EQ(0.0f, ctx.lost_wait_elapsed);
+    ASSERT_EQ(0, ctx.target);
 }
 
 } // namespace sml_test_4
