@@ -4,6 +4,8 @@
 #include <functional>
 #include <memory>
 #include <random>
+#include <string>
+#include <vector>
 
 namespace sml_test_4 {
 namespace sml = boost::sml;
@@ -51,11 +53,13 @@ struct CombatSm {
         auto toChase = [](Context& ctx) {
             ctx.top = TopState::Combat;
             ctx.sub = CombatSubState::Chase;
+            ctx.logger.push_back("transition: Attack -> Chase");
         };
 
         auto toAttack = [](Context& ctx) {
             ctx.top = TopState::Combat;
             ctx.sub = CombatSubState::Attack;
+            ctx.logger.push_back("transition: Chase -> Attack");
         };
 
         return make_transition_table(
@@ -78,12 +82,14 @@ struct RootSm {
             ctx.sub = CombatSubState::None;
             ctx.lost_wait_elapsed = 0.0f;
             ctx.target = 0;
+            ctx.logger.push_back("transition: LostAfterEnemyLost -> Patrol");
         };
 
         auto toCombat = [](const EnemySpotted& e, Context& ctx) {
             ctx.target = e.target;
             ctx.top = TopState::Combat;
             ctx.sub = CombatSubState::Chase;
+            ctx.logger.push_back("transition: Patrol -> CombatSm(Chase)");
         };
 
         auto canEnterCombat = [](Context& ctx) {
@@ -94,6 +100,7 @@ struct RootSm {
             ctx.lost_wait_elapsed = 0.0f;
             ctx.top = TopState::Combat;
             ctx.sub = CombatSubState::None;
+            ctx.logger.push_back("transition: CombatSm -> LostAfterEnemyLost");
         };
 
         auto tickLostWait = [](const on_update& e, Context& ctx) {
@@ -130,6 +137,8 @@ TEST(SmlTest4, test1)
     ASSERT_EQ(123, ctx.target);
     ASSERT_EQ(TopState::Combat, ctx.top);
     ASSERT_EQ(CombatSubState::Chase, ctx.sub);
+    ASSERT_EQ(1u, ctx.logger.size());
+    ASSERT_EQ("transition: Patrol -> CombatSm(Chase)", ctx.logger[0]);
 }
 
 TEST(SmlTest4, spotted_but_not_transitioned)
@@ -142,6 +151,7 @@ TEST(SmlTest4, spotted_but_not_transitioned)
     ASSERT_EQ(0, ctx.target);
     ASSERT_EQ(TopState::Patrol, ctx.top);
     ASSERT_EQ(CombatSubState::None, ctx.sub);
+    ASSERT_TRUE(ctx.logger.empty());
 }
 
 TEST(SmlTest4, enemy_lost_waits_1s_then_returns_patrol)
@@ -167,6 +177,11 @@ TEST(SmlTest4, enemy_lost_waits_1s_then_returns_patrol)
     ASSERT_EQ(CombatSubState::None, ctx.sub);
     ASSERT_EQ(0.0f, ctx.lost_wait_elapsed);
     ASSERT_EQ(0, ctx.target);
+
+    ASSERT_EQ(3u, ctx.logger.size());
+    ASSERT_EQ("transition: Patrol -> CombatSm(Chase)", ctx.logger[0]);
+    ASSERT_EQ("transition: CombatSm -> LostAfterEnemyLost", ctx.logger[1]);
+    ASSERT_EQ("transition: LostAfterEnemyLost -> Patrol", ctx.logger[2]);
 }
 
 } // namespace sml_test_4
