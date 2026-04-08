@@ -2,6 +2,9 @@
 #include <gtest/gtest.h>
 #include <tuple>
 #include <optional>
+#include <mutex>
+#include <thread>
+#include <atomic>
 #include "simple_player_state.h"
 
 namespace simple_enemy_state_1 {
@@ -39,14 +42,17 @@ template <typename... Args>
 struct MyQue {
 	using args_type = std::tuple<Args...>;
 	std::vector<args_type> a;
+	mutable std::mutex mtx_;
 
 	bool empty() const
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		return a.empty();
 	}
 
 	size_t size() const
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		return a.size();
 	}
 
@@ -58,21 +64,28 @@ struct MyQue {
 	template <typename... U>
 	void push(U&&... u) {
 	    static_assert(sizeof...(U) == sizeof...(Args), "argument count mismatch");
+		std::lock_guard<std::mutex> lock(mtx_);
 	    a.emplace_back(std::forward<U>(u)...);
 	}
 
 	template <typename F>
 	bool invoke(F f)
 	{
-		if (a.empty())
-			return false;
-		std::apply(f, a.front());
-		a.erase(a.begin());
+		std::optional<args_type> request;
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			if (a.empty())
+				return false;
+			request = std::move(a.front());
+			a.erase(a.begin());
+		}
+		std::apply(f, *request);
 		return true;
 	}
 
 	std::optional<args_type> pop()
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		if (a.empty())
 			return std::nullopt;
 		auto result = std::move(a.front());
@@ -84,35 +97,43 @@ struct MyQue {
 template <>
 struct MyQue<void> {
 	size_t count = 0;
+	mutable std::mutex mtx_;
 
 	bool empty() const
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		return count == 0;
 	}
 
 	size_t size() const
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		return count;
 	}
 
 	void push()
 	{
+		std::lock_guard<std::mutex> lock(mtx_);
 		count++;
 	}
 
 	template <typename F>
 	bool invoke(F f)
 	{
-		if (empty())
-			return false;
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			if (count == 0)
+				return false;
+			--count;
+		}
 		f();
-		--count;
 		return true;
 	}
 
 	bool pop()
 	{
-		if (empty())
+		std::lock_guard<std::mutex> lock(mtx_);
+		if (count == 0)
 			return false;
 		--count;
 		return true;
@@ -240,6 +261,45 @@ TEST(SimpleEnemyState, view_call_1)
 	}));
 }
 
+TEST(SimpleEnemyState, queue_thread_safe_basic)
+{
+	MyQue<int> q;
+	constexpr int kProducerCount = 4;
+	constexpr int kPushPerProducer = 250;
+	constexpr int kTotalPush = kProducerCount * kPushPerProducer;
+
+	std::atomic<int> pop_count{ 0 };
+	std::vector<std::thread> producers;
+	producers.reserve(kProducerCount);
+
+	for (int i = 0; i < kProducerCount; ++i) {
+		producers.emplace_back([&q, kPushPerProducer]() {
+			for (int j = 0; j < kPushPerProducer; ++j) {
+				q.push(j);
+			}
+		});
+	}
+
+	std::thread consumer([&q, &pop_count, kTotalPush]() {
+		while (pop_count.load() < kTotalPush) {
+			auto item = q.pop();
+			if (item) {
+				++pop_count;
+			}
+			else {
+				std::this_thread::yield();
+			}
+		}
+	});
+
+	for (auto& t : producers)
+		t.join();
+	consumer.join();
+
+	ASSERT_EQ(kTotalPush, pop_count.load());
+	ASSERT_TRUE(q.empty());
+}
+
 
 #if 0
 TEST(SimpleEnemyState, test1)
@@ -255,5 +315,96 @@ TEST(SimpleEnemyState, test1)
 #endif
 }
 #endif
+
+enum class ShooterStateType {
+    IDLE,
+    SHOOT,
+};
+
+struct ShooterView {
+	ShooterStateType state_;
+	std::shared_ptr<MyQue<float>> p_shoot_que_;
+
+	ShooterStateType state() const
+	{
+		return state_;
+	}
+
+	template <typename F>
+	bool handle_shoot(F f)
+	{
+		if (p_shoot_que_)
+			return p_shoot_que_->invoke(std::forward<F>(f));
+		return false;
+	}
+
+	std::optional<std::tuple<float>> handle_shoot()
+	{
+		if (p_shoot_que_)
+			return p_shoot_que_->pop();
+		return std::nullopt;
+	}
+};
+
+struct ShooterState {
+	ShooterStateType state_ {};
+	float interval_ = 0;
+	std::vector<std::weak_ptr<MyQue<float>>> shoots_;
+
+	void tick(float delta_time)
+	{
+		interval_ += delta_time;
+		if (interval_ < 1.0f) {
+			state_ = ShooterStateType::IDLE;
+			return;
+		}
+		interval_ = 0;
+		state_ = ShooterStateType::SHOOT;
+		shoot(1.0f);
+	}
+
+	size_t shoot(float speed)
+	{
+		size_t n = 0;
+		for (auto it = shoots_.begin(),e = shoots_.end(); it != e;) {
+			if (auto p = it->lock()) {
+				p->push(speed);
+				++it;
+				++n;
+			}
+			else {
+				it = shoots_.erase(it);
+				e = shoots_.end();
+			}
+		}
+		return n;
+	}
+
+	std::shared_ptr<ShooterView> create_view()
+	{
+		auto p = std::make_shared<ShooterView>();
+		p->state_ = state_;
+		p->p_shoot_que_ = std::make_shared<MyQue<float>>();
+		shoots_.emplace_back(p->p_shoot_que_);
+		return p;
+	}
+};
+
+TEST(SimpleEnemyState, test_1)
+{
+	ShooterState ss;
+	auto p_view = ss.create_view();
+	ASSERT_TRUE(p_view);
+
+	ASSERT_EQ(ShooterStateType::IDLE, p_view->state());
+	ss.tick(1.0f);	
+	//ASSERT_EQ(ShooterStateType::IDLE, p_view->state());
+
+	ASSERT_TRUE(p_view->handle_shoot([](float speed) {
+		ASSERT_EQ(1, speed);
+	}));
+	ASSERT_FALSE(p_view->handle_shoot());
+}
+
 
 } // namespace simple_enemy_state_1
