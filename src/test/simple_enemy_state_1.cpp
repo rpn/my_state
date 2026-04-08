@@ -63,9 +63,9 @@ struct MyQue {
 
 	template <typename... U>
 	void push(U&&... u) {
-	    static_assert(sizeof...(U) == sizeof...(Args), "argument count mismatch");
+		static_assert(sizeof...(U) == sizeof...(Args), "argument count mismatch");
 		std::lock_guard<std::mutex> lock(mtx_);
-	    a.emplace_back(std::forward<U>(u)...);
+		a.emplace_back(std::forward<U>(u)...);
 	}
 
 	template <typename F>
@@ -80,6 +80,57 @@ struct MyQue {
 			a.erase(a.begin());
 		}
 		std::apply(f, *request);
+		return true;
+	}
+
+	std::optional<args_type> pop()
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		if (a.empty())
+			return std::nullopt;
+		auto result = std::move(a.front());
+		a.erase(a.begin());
+		return result;
+	}
+};
+
+template <typename T>
+struct MyQue<T> {
+	using args_type = T;
+	std::vector<args_type> a;
+	mutable std::mutex mtx_;
+
+	bool empty() const
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		return a.empty();
+	}
+
+	size_t size() const
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		return a.size();
+	}
+
+	template <typename U>
+	void push(U&& u)
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		a.emplace_back(std::forward<U>(u));
+	}
+
+	template <typename F>
+	bool invoke(F f)
+	{
+		std::optional<args_type> request;
+		{
+			std::lock_guard<std::mutex> lock(mtx_);
+			if (a.empty())
+				return false;
+			request = std::move(a.front());
+			a.erase(a.begin());
+		}
+		f(*request);
 		return true;
 	}
 
@@ -162,7 +213,7 @@ TEST(SimpleEnemyState, tuple)
 	{
 		MyQue<std::string> que;
 		que.push("hello world");
-		ASSERT_EQ("hello world", std::get<0>(que.a.front()));
+		ASSERT_EQ("hello world", que.a.front());
 
 		que.invoke([](std::string s) {
 			ASSERT_EQ("hello world", s);
@@ -178,7 +229,7 @@ TEST(SimpleEnemyState, tuple)
 		{
 			auto o = que.pop();
 			ASSERT_TRUE(o);
-			ASSERT_EQ("bar", std::get<0>(*o));
+			ASSERT_EQ("bar", *o);
 		}
 		//que.invoke([](std::string s) {
 		//	ASSERT_EQ("bar", s);
@@ -317,8 +368,8 @@ TEST(SimpleEnemyState, test1)
 #endif
 
 enum class ShooterStateType {
-    IDLE,
-    SHOOT,
+	IDLE,
+	SHOOT,
 };
 
 struct ShooterView {
@@ -338,7 +389,7 @@ struct ShooterView {
 		return false;
 	}
 
-	std::optional<std::tuple<float>> handle_shoot()
+	std::optional<float> handle_shoot()
 	{
 		if (p_shoot_que_)
 			return p_shoot_que_->pop();
