@@ -1,7 +1,9 @@
 ﻿// sml_test_4.cpp
 #include <gtest/gtest.h>
 #include <boost/sml.hpp>
+#include <functional>
 #include <memory>
+#include <random>
 
 namespace sml_test_4 {
 namespace sml = boost::sml;
@@ -29,6 +31,11 @@ struct Context {
 	int target = 0;
     TopState top = TopState::Patrol;
     CombatSubState sub = CombatSubState::None;
+    std::function<bool()> spotted_transition_decider = [] {
+        static thread_local std::mt19937 rng{std::random_device{}()};
+        static thread_local std::bernoulli_distribution coin_flip{0.5};
+        return coin_flip(rng);
+    };
 };
 
 struct CombatSm {
@@ -67,8 +74,12 @@ struct RootSm {
             ctx.sub = CombatSubState::Chase;
         };
 
+        auto canEnterCombat = [](Context& ctx) {
+            return ctx.spotted_transition_decider();
+        };
+
         return make_transition_table(
-            *state<class Patrol> + event<EnemySpotted> / toCombat = state<CombatSm>,
+            *state<class Patrol> + event<EnemySpotted> [canEnterCombat] / toCombat = state<CombatSm>,
              state<CombatSm> + event<EnemyLost> / toPatrol = state<class Patrol>
         );
     }
@@ -78,12 +89,25 @@ struct RootSm {
 TEST(SmlTest4, test1)
 {
     Context ctx;
+    ctx.spotted_transition_decider = [] { return true; };
     sml::sm<RootSm> sm{ ctx };
 
     sm.process_event(EnemySpotted{123});
     ASSERT_EQ(123, ctx.target);
     ASSERT_EQ(TopState::Combat, ctx.top);
     ASSERT_EQ(CombatSubState::Chase, ctx.sub);
+}
+
+TEST(SmlTest4, spotted_but_not_transitioned)
+{
+    Context ctx;
+    ctx.spotted_transition_decider = [] { return false; };
+    sml::sm<RootSm> sm{ ctx };
+
+    sm.process_event(EnemySpotted{999});
+    ASSERT_EQ(0, ctx.target);
+    ASSERT_EQ(TopState::Patrol, ctx.top);
+    ASSERT_EQ(CombatSubState::None, ctx.sub);
 }
 
 } // namespace sml_test_4
