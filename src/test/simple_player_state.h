@@ -25,14 +25,19 @@ enum class PlayerStateType {
     IDLE,
     WALK,
     RUN,
+    SLIDE,
+    DASH,
 };
 
 struct MoveIntent {
     float velocity;
+    bool is_slide;
 };
 
 struct PlayerState {
     PlayerStateType state_ = PlayerStateType::IDLE;
+    float power_ = 0;
+    float dash_timer_ = 0;
     std::shared_ptr<ActionQue> p_que_ = std::make_shared<ActionQue>();
 
     PlayerStateType state() const
@@ -40,16 +45,25 @@ struct PlayerState {
     	return state_;
     }
 
-    bool transion(PlayerStateType state);
+    float speed() const;
+
+    bool transition(PlayerStateType state);
+    bool transition(float delta_time, const MoveIntent& intent);
     void tick(float delta_time, const MoveIntent& intent);
 
     struct PlayerView {
         PlayerStateType state_ = PlayerStateType::IDLE;
         std::weak_ptr<ActionQue> p_que_;
+        float speed_;
 
         PlayerStateType state() const
         {
             return state_;
+        }
+
+        float speed() const
+        {
+            return speed_;
         }
     };
 
