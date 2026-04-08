@@ -20,32 +20,32 @@ struct TimerHolder {
 	std::unique_ptr<Timer> timer;
 };
 
+struct TimeoutMachineContext {
+	TimerHolder timer_holder;
+};
+
 // 3. アクションとガードの定義
 // waitingに入った時だけTimerを確保する
-auto allocate_timer = [](TimerHolder* h) {
-	if (!h)
-		return;
-	if (!h->timer)
-		h->timer = std::make_unique<Timer>();
-	h->timer->elapsed = 0.0f;
+auto allocate_timer = [](TimerHolder& h) {
+	if (!h.timer)
+		h.timer = std::make_unique<Timer>();
+	h.timer->elapsed = 0.0f;
 };
 
 // next_stateに入ったらTimerを破棄する
-auto release_timer = [](TimerHolder* h) {
-	if (!h)
-		return;
-	h->timer.reset();
+auto release_timer = [](TimerHolder& h) {
+	h.timer.reset();
 };
 
 // イベントからdelta_timeを受け取り、注入されたTimerに加算する
-auto tick = [](const on_update& e, TimerHolder* h) {
-	if (h && h->timer)
-		h->timer->elapsed += e.delta_time;
+auto tick = [](const on_update& e, TimerHolder& h) {
+	if (h.timer)
+		h.timer->elapsed += e.delta_time;
 };
 
 // 加算後の値（elapsed + delta_time）が指定秒数に達するかを判定するガード
-auto is_timeout = [](const on_update& e, const TimerHolder* h) {
-	return h && h->timer && ((h->timer->elapsed + e.delta_time) >= 3.0f);
+auto is_timeout = [](const on_update& e, const TimerHolder& h) {
+	return h.timer && ((h.timer->elapsed + e.delta_time) >= 3.0f);
 };
 
 // 4. ステートマシンの定義
@@ -70,30 +70,34 @@ struct timeout_machine {
 	}
 };
 
+using timeout_sm = sml::sm<timeout_machine>;
+
+timeout_sm make_timeout_sm(TimeoutMachineContext& context) {
+	return timeout_sm{context.timer_holder};
+}
+
 
 TEST(SmlTest3, test1)
 {
 	using sml::literals::operator""_s;	
 
-	// 所有は外部、確保/破棄はステート遷移で行う
-	TimerHolder holder;
-	
-	// ステートマシンに注入（ポインタ）
-	sml::sm<timeout_machine> sm{&holder};
+	// 所有は外部にまとめ、依存関係の配線はファクトリに隠蔽する
+	TimeoutMachineContext context;
+	timeout_sm sm = make_timeout_sm(context);
 
-	ASSERT_TRUE(holder.timer);
+	ASSERT_TRUE(context.timer_holder.timer);
 
 	sm.process_event(on_update{0.5f});
 	ASSERT_TRUE(sm.is("waiting"_s));
-	ASSERT_EQ(0.5f, holder.timer->elapsed);
+	ASSERT_EQ(0.5f, context.timer_holder.timer->elapsed);
 
 	sm.process_event(on_update{0.5f});
 	ASSERT_TRUE(sm.is("waiting"_s));
-	ASSERT_EQ(1.0f, holder.timer->elapsed);
+	ASSERT_EQ(1.0f, context.timer_holder.timer->elapsed);
 
 	sm.process_event(on_update{100.0f});
 	ASSERT_TRUE(sm.is("next_state"_s));
-	ASSERT_FALSE(holder.timer);
+	ASSERT_FALSE(context.timer_holder.timer);
 }
 
 } // namespace sml_test_3
