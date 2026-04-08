@@ -1,8 +1,11 @@
 ﻿// simple_enemy_state_1.cpp
 #include <gtest/gtest.h>
+#include <tuple>
+#include <optional>
 #include "simple_player_state.h"
 
 namespace simple_enemy_state_1 {
+
 
 #if NOTE
 enum class ShooterView {
@@ -32,6 +35,213 @@ enum class ShooterView {
 - 会社用のwebサービスって簡単に作れる？
 #endif
 
+template <typename... Args>
+struct MyQue {
+	using args_type = std::tuple<Args...>;
+	std::vector<args_type> a;
+
+	bool empty() const
+	{
+		return a.empty();
+	}
+
+	size_t size() const
+	{
+		return a.size();
+	}
+
+	//void push(Args&&... args)
+	//{
+	//	a.emplace_back(std::forward<Args>(args)...);
+	//}
+
+	template <typename... U>
+	void push(U&&... u) {
+	    static_assert(sizeof...(U) == sizeof...(Args), "argument count mismatch");
+	    a.emplace_back(std::forward<U>(u)...);
+	}
+
+	template <typename F>
+	bool invoke(F f)
+	{
+		if (a.empty())
+			return false;
+		std::apply(f, a.front());
+		a.erase(a.begin());
+		return true;
+	}
+
+	std::optional<args_type> pop()
+	{
+		if (a.empty())
+			return std::nullopt;
+		auto result = std::move(a.front());
+		a.erase(a.begin());
+		return result;
+	}
+};
+
+template <>
+struct MyQue<void> {
+	size_t count = 0;
+
+	bool empty() const
+	{
+		return count == 0;
+	}
+
+	size_t size() const
+	{
+		return count;
+	}
+
+	void push()
+	{
+		count++;
+	}
+
+	template <typename F>
+	bool invoke(F f)
+	{
+		if (empty())
+			return false;
+		f();
+		--count;
+		return true;
+	}
+
+	bool pop()
+	{
+		if (empty())
+			return false;
+		--count;
+		return true;
+	}
+};
+
+TEST(SimpleEnemyState, tuple)
+{
+	std::tuple<int, int> t(1,2);
+	ASSERT_EQ(1, std::get<0>(t));
+	ASSERT_EQ(2, std::get<1>(t));
+
+	std::apply([](int a, int b) {
+		ASSERT_EQ(1, a);
+		ASSERT_EQ(2, b);
+	}, t);
+
+	{
+		MyQue<int, int> que;
+		que.push(1, 2);
+		ASSERT_EQ(1, que.a.size());
+		ASSERT_EQ(1, std::get<0>(que.a[0]));
+		ASSERT_EQ(2, std::get<1>(que.a[0]));
+	}
+
+	{
+		MyQue<std::string> que;
+		que.push("hello world");
+		ASSERT_EQ("hello world", std::get<0>(que.a.front()));
+
+		que.invoke([](std::string s) {
+			ASSERT_EQ("hello world", s);
+		});
+		ASSERT_TRUE(que.empty());
+
+		que.push("foo");
+		que.push("bar");
+		que.push("baz");
+		que.invoke([](std::string s) {
+			ASSERT_EQ("foo", s);
+		});
+		{
+			auto o = que.pop();
+			ASSERT_TRUE(o);
+			ASSERT_EQ("bar", std::get<0>(*o));
+		}
+		//que.invoke([](std::string s) {
+		//	ASSERT_EQ("bar", s);
+		//});
+		que.invoke([](std::string s) {
+			ASSERT_EQ("baz", s);
+		});
+	}
+	{
+		MyQue<void> q;
+		q.push();
+		ASSERT_EQ(1, q.size());
+		ASSERT_TRUE(q.pop());
+		ASSERT_FALSE(q.pop());
+	}
+}
+
+struct MyView {
+	int handle = 0;
+	std::shared_ptr<MyQue<int, std::string>> p_que;
+
+	//bool open()
+	//{
+	//	if (p_que != nullptr)
+	//		return false;
+	//	p_que = std::make_shared<MyQue<int, std::string>>();
+	//	return true;
+	//}
+
+	template <typename F>
+	bool pop(F f)
+	{
+		if (p_que)
+			return p_que->invoke(std::forward<F>(f));
+		return false;
+	}
+};
+
+struct MyState {
+	std::vector<std::weak_ptr<MyQue<int, std::string>>> p_ques;
+
+	size_t push(int a, std::string s)
+	{
+		size_t n = 0;
+		for (auto it = p_ques.begin(), e = p_ques.end(); it != e;) {
+			if (auto p = it->lock()) {
+				p->push(a, s);
+				++it;
+				++n;
+			}
+			else {
+				it = p_ques.erase(it);
+				e = p_ques.end();
+			}
+		}
+		return n;
+	}
+
+	std::shared_ptr<MyView> create_view()
+	{
+		auto p = std::make_shared<MyView>();
+		p->p_que = std::make_shared<MyQue<int, std::string>>();
+		p_ques.emplace_back(p->p_que);
+		return p;
+	}
+};
+
+TEST(SimpleEnemyState, view_call_1)
+{
+	MyState s;
+	auto p = s.create_view();
+	ASSERT_TRUE(p);
+	ASSERT_TRUE(p->p_que);
+
+	ASSERT_EQ(1u, s.push(123, "foo"));
+
+	ASSERT_TRUE(p->pop([](int a, std::string t) {
+		ASSERT_EQ(123, a);
+		ASSERT_EQ("foo", t);
+	}));
+}
+
+
+#if 0
 TEST(SimpleEnemyState, test1)
 {
 	ASSERT_TRUE(false);
@@ -44,5 +254,6 @@ TEST(SimpleEnemyState, test1)
 	});	
 #endif
 }
+#endif
 
 } // namespace simple_enemy_state_1
