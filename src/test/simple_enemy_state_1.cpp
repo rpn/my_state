@@ -34,7 +34,7 @@ enum class ShooterView {
 
 TEST(SimpleEnemyState, test1)
 {
-	ASSERT_TRUE(true);
+	ASSERT_TRUE(false);
 
 #if NOTE
 	is_called(post_address);

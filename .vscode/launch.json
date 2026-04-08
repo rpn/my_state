@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run rtom command",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"rtom -f build -e '$run()'; exit $LASTEXITCODE\"",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
