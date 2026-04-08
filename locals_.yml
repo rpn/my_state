@@ -1,0 +1,5 @@
+﻿# locals.yml
+includes:
+	googletest: 'D:/usr/prj/cpp/googletest/googletest'
+
+default: $$build_cmake('--gtest_filter=*.*')
