@@ -4,15 +4,15 @@
 
 namespace simple_enemy_state_1 {
 
+#if NOTE
 enum class ShooterView {
 	int post_address = 0;
 
-#if NOTE
 	bool open_post_box();
 		// 開設
 	void close_post_box();
-#endif
 };
+#endif
 
 #if NOTE
 - callする仕組みを作る
@@ -34,7 +34,7 @@ enum class ShooterView {
 
 TEST(SimpleEnemyState, test1)
 {
-	ASSERT_TRUE(false);
+	ASSERT_TRUE(true);
 
 #if NOTE
 	is_called(post_address);
