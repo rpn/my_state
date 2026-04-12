@@ -60,6 +60,16 @@ struct BasicMachine {
     }
 };
 
+struct BasicMachineNoSync {
+    auto operator()() const {
+        using namespace sml;
+        return make_transition_table(
+            *"idle"_s + event<EvStart> = "running"_s,
+             "running"_s + event<EvStop> = "idle"_s
+        );
+    }
+};
+
 TEST(SmlTutorial1, basic_transition)
 {
     BasicContext ctx;
@@ -75,6 +85,24 @@ TEST(SmlTutorial1, basic_transition)
     // EvStop で running -> idle に戻る。
     sm.process_event(EvStop{});
     ASSERT_EQ(BasicState::Idle, ctx.state);
+}
+
+TEST(SmlTutorial1, basic_transition_without_sync)
+{
+    using sml::literals::operator""_s;
+
+    // このテストでは Context も on_entry も使わない。
+    // 「状態を外にコピーしない」ので、同期コストや二重管理を避けられる。
+    sml::sm<BasicMachineNoSync> sm;
+
+    // 現在状態は sm.is(...) で直接判定する。
+    ASSERT_TRUE(sm.is("idle"_s));
+
+    sm.process_event(EvStart{});
+    ASSERT_TRUE(sm.is("running"_s));
+
+    sm.process_event(EvStop{});
+    ASSERT_TRUE(sm.is("idle"_s));
 }
 
 // ------------------------------------------------------------
