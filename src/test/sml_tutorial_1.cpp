@@ -31,8 +31,27 @@ struct BasicMachine {
         auto on_running = [](BasicContext& ctx) { ctx.state = BasicState::Running; };
 
         return make_transition_table(
+            // --- `state<...>` の基礎説明 ---
+            // `state<T>` は「状態を表す型ラッパー」。
+            // ここでの T は値ではなく「型」なので、実体オブジェクトは不要。
+            // つまり `state<class Idle>` は「Idle という型名の状態」を指す。
+            //
+            // `class Idle` と書く理由:
+            // - この場で前方宣言を兼ねて型名を作れるため。
+            // - `struct Idle {};` を先に書いて `state<Idle>` としても同じ意味。
+            //
+            // 文字列状態 `"idle"_s` との違い:
+            // - `state<class Idle>`: 型ベースで安全、リネームに強い。
+            // - `"idle"_s`: 手軽で短いが文字列由来のため typo に弱い。
+            //
+            // 1行の読み方:
+            // `state<class Idle> + event<EvStart> = state<class Running>`
+            // => 「Idle 状態で EvStart を受けたら Running へ遷移する」。
             // `*` を付けた状態が初期状態になる。
             // 文字列リテラルではなく型状態(class Idle/Running)を使う。
+            // `on_entry<_>` は「その状態に入った瞬間に発火する疑似イベント」。
+            // ここでは entry 時に enum を更新して、テスト側が `sm.is(...)` ではなく
+            // `ctx.state` を直接検証できるようにしている。
             *state<class Idle> + on_entry<_> / on_idle,
              state<class Running> + on_entry<_> / on_running,
              state<class Idle> + event<EvStart> = state<class Running>,
