@@ -14,32 +14,48 @@ namespace sml = boost::sml;
 struct EvStart {};
 struct EvStop {};
 
+enum class BasicState {
+    Idle,
+    Running,
+};
+
+struct BasicContext {
+    BasicState state = BasicState::Idle;
+};
+
 struct BasicMachine {
     auto operator()() const {
         using namespace sml;
+
+        auto on_idle = [](BasicContext& ctx) { ctx.state = BasicState::Idle; };
+        auto on_running = [](BasicContext& ctx) { ctx.state = BasicState::Running; };
+
         return make_transition_table(
             // `*` を付けた状態が初期状態になる。
-            *"idle"_s + event<EvStart> = "running"_s,
-             "running"_s + event<EvStop> = "idle"_s
+            // 文字列リテラルではなく型状態(class Idle/Running)を使う。
+            *state<class Idle> + on_entry<_> / on_idle,
+             state<class Running> + on_entry<_> / on_running,
+             state<class Idle> + event<EvStart> = state<class Running>,
+             state<class Running> + event<EvStop> = state<class Idle>
         );
     }
 };
 
 TEST(SmlTutorial1, basic_transition)
 {
-    using sml::literals::operator""_s;
-
+    BasicContext ctx;
+    // 依存オブジェクトとして ctx を注入し、状態を enum で観測する。
+    sml::sm<BasicMachine> sm{ctx};
     // 状態マシン生成直後は初期状態 "idle"。
-    sml::sm<BasicMachine> sm;
-    ASSERT_TRUE(sm.is("idle"_s));
+    ASSERT_EQ(BasicState::Idle, ctx.state);
 
     // EvStart を送ると idle -> running へ遷移する。
     sm.process_event(EvStart{});
-    ASSERT_TRUE(sm.is("running"_s));
+    ASSERT_EQ(BasicState::Running, ctx.state);
 
     // EvStop で running -> idle に戻る。
     sm.process_event(EvStop{});
-    ASSERT_TRUE(sm.is("idle"_s));
+    ASSERT_EQ(BasicState::Idle, ctx.state);
 }
 
 // ------------------------------------------------------------
@@ -52,6 +68,12 @@ struct EvOpen {};
 struct EvClose {};
 
 struct DoorContext {
+    enum class State {
+        Closed,
+        Open,
+    };
+
+    State state = State::Closed;
     bool has_key = false;
     int denied_count = 0;
 };
@@ -68,43 +90,51 @@ struct GuardedDoorMachine {
             ++ctx.denied_count;
         };
 
+        auto on_closed = [](DoorContext& ctx) {
+            ctx.state = DoorContext::State::Closed;
+        };
+
+        auto on_open = [](DoorContext& ctx) {
+            ctx.state = DoorContext::State::Open;
+        };
+
         return make_transition_table(
+            *state<class Closed> + on_entry<_> / on_closed,
+             state<class Open> + on_entry<_> / on_open,
             // 同じ EvOpen でも上から順に評価される。
             // has_key == true のときだけ open へ遷移。
-            *"closed"_s + event<EvOpen> [can_open] = "open"_s,
+             state<class Closed> + event<EvOpen> [can_open] = state<class Open>,
             // ガードに通らなければこの行が処理される。
             // 状態は closed のまま、拒否回数だけ増やす。
-             "closed"_s + event<EvOpen> / count_denied,
-             "open"_s + event<EvClose> = "closed"_s
+             state<class Closed> + event<EvOpen> / count_denied,
+             state<class Open> + event<EvClose> = state<class Closed>
         );
     }
 };
 
 TEST(SmlTutorial1, guard_and_fallback)
 {
-    using sml::literals::operator""_s;
-
     DoorContext ctx;
     sml::sm<GuardedDoorMachine> sm{ctx};
 
     // 初期は鍵なしで closed。
-    ASSERT_TRUE(sm.is("closed"_s));
+    ASSERT_EQ(DoorContext::State::Closed, ctx.state);
     ASSERT_EQ(0, ctx.denied_count);
 
     // 鍵がないので開かない。代わりに denied_count が増える。
     sm.process_event(EvOpen{});
-    ASSERT_TRUE(sm.is("closed"_s));
+    ASSERT_EQ(DoorContext::State::Closed, ctx.state);
     ASSERT_EQ(1, ctx.denied_count);
 
     // 鍵を持ったので、次の EvOpen で open に遷移できる。
     ctx.has_key = true;
     sm.process_event(EvOpen{});
-    ASSERT_TRUE(sm.is("open"_s));
+    ASSERT_EQ(DoorContext::State::Open, ctx.state);
     ASSERT_EQ(1, ctx.denied_count);
 
     // EvClose で closed に戻る。
     sm.process_event(EvClose{});
-    ASSERT_TRUE(sm.is("closed"_s));
+    ASSERT_EQ(DoorContext::State::Closed, ctx.state);
 }
 
 // ------------------------------------------------------------
@@ -118,6 +148,12 @@ struct EvDamage {
 };
 
 struct BattleContext {
+    enum class State {
+        Alive,
+        Dead,
+    };
+
+    State state = State::Alive;
     int hp = 100;
 };
 
@@ -135,37 +171,40 @@ struct BattleMachine {
                 ctx.hp = 0;
         };
 
+        auto on_alive = [](BattleContext& ctx) { ctx.state = BattleContext::State::Alive; };
+        auto on_dead = [](BattleContext& ctx) { ctx.state = BattleContext::State::Dead; };
+
         return make_transition_table(
+            *state<class Alive> + on_entry<_> / on_alive,
+             state<class Dead> + on_entry<_> / on_dead,
             // 先に「致死ダメージ」の分岐を書く。
             // 条件に当てはまれば alive -> dead へ遷移する。
-            *"alive"_s + event<EvDamage> [will_die] / apply_damage = "dead"_s,
+             state<class Alive> + event<EvDamage> [will_die] / apply_damage = state<class Dead>,
             // 致死でなければ同じ alive に留まりつつ HP だけ減らす。
-             "alive"_s + event<EvDamage>            / apply_damage,
+             state<class Alive> + event<EvDamage>            / apply_damage,
             // dead で追加ダメージを受けても dead のまま。
-             "dead"_s + event<EvDamage>             = "dead"_s
+             state<class Dead> + event<EvDamage>             = state<class Dead>
         );
     }
 };
 
 TEST(SmlTutorial1, event_payload_and_action)
 {
-    using sml::literals::operator""_s;
-
     BattleContext ctx;
     sml::sm<BattleMachine> sm{ctx};
 
     // 初期値確認。
-    ASSERT_TRUE(sm.is("alive"_s));
+    ASSERT_EQ(BattleContext::State::Alive, ctx.state);
     ASSERT_EQ(100, ctx.hp);
 
     // 40 ダメージは致死ではないので alive 維持。
     sm.process_event(EvDamage{40});
-    ASSERT_TRUE(sm.is("alive"_s));
+    ASSERT_EQ(BattleContext::State::Alive, ctx.state);
     ASSERT_EQ(60, ctx.hp);
 
     // 80 ダメージで 0 以下になるため dead へ遷移。
     sm.process_event(EvDamage{80});
-    ASSERT_TRUE(sm.is("dead"_s));
+    ASSERT_EQ(BattleContext::State::Dead, ctx.state);
     ASSERT_EQ(0, ctx.hp);
 }
 
@@ -180,6 +219,12 @@ struct EvEnemySpotted {};
 struct EvEnemyLost {};
 
 struct LifecycleContext {
+    enum class State {
+        Patrol,
+        Combat,
+    };
+
+    State state = State::Patrol;
     int patrol_entry = 0;
     int patrol_exit = 0;
     int combat_entry = 0;
@@ -190,55 +235,59 @@ struct LifecycleMachine {
     auto operator()() const {
         using namespace sml;
 
-        auto on_patrol_entry = [](LifecycleContext& ctx) { ++ctx.patrol_entry; };
+        auto on_patrol_entry = [](LifecycleContext& ctx) {
+            ++ctx.patrol_entry;
+            ctx.state = LifecycleContext::State::Patrol;
+        };
         auto on_patrol_exit = [](LifecycleContext& ctx) { ++ctx.patrol_exit; };
-        auto on_combat_entry = [](LifecycleContext& ctx) { ++ctx.combat_entry; };
+        auto on_combat_entry = [](LifecycleContext& ctx) {
+            ++ctx.combat_entry;
+            ctx.state = LifecycleContext::State::Combat;
+        };
         auto on_tick = [](LifecycleContext& ctx) { ++ctx.tick_count; };
 
         return make_transition_table(
               // patrol に入るたび entry カウンタを増やす。
-            *"patrol"_s + on_entry<_> / on_patrol_entry,
+            *state<class Patrol> + on_entry<_> / on_patrol_entry,
               // patrol から出るときに exit カウンタを増やす。
-             "patrol"_s + on_exit<_> / on_patrol_exit,
+             state<class Patrol> + on_exit<_> / on_patrol_exit,
               // combat に入った回数を記録する。
-             "combat"_s + on_entry<_> / on_combat_entry,
+             state<class Combat> + on_entry<_> / on_combat_entry,
 
                // 内部処理: patrol のまま tick_count を増やす。
-             "patrol"_s + event<EvTick> / on_tick,
+             state<class Patrol> + event<EvTick> / on_tick,
 
-             "patrol"_s + event<EvEnemySpotted> = "combat"_s,
-             "combat"_s + event<EvEnemyLost> = "patrol"_s
+             state<class Patrol> + event<EvEnemySpotted> = state<class Combat>,
+             state<class Combat> + event<EvEnemyLost> = state<class Patrol>
         );
     }
 };
 
 TEST(SmlTutorial1, entry_exit_and_internal_processing)
 {
-    using sml::literals::operator""_s;
-
     LifecycleContext ctx;
     sml::sm<LifecycleMachine> sm{ctx};
 
     // 生成時に patrol へ entry している。
-    ASSERT_TRUE(sm.is("patrol"_s));
+    ASSERT_EQ(LifecycleContext::State::Patrol, ctx.state);
     ASSERT_EQ(1, ctx.patrol_entry);
     ASSERT_EQ(0, ctx.patrol_exit);
 
     // EvTick は内部処理なので状態は変わらない。
     sm.process_event(EvTick{});
-    ASSERT_TRUE(sm.is("patrol"_s));
+    ASSERT_EQ(LifecycleContext::State::Patrol, ctx.state);
     ASSERT_EQ(1, ctx.patrol_entry);
     ASSERT_EQ(1, ctx.tick_count);
 
     // 敵発見で combat へ。patrol の exit と combat の entry が走る。
     sm.process_event(EvEnemySpotted{});
-    ASSERT_TRUE(sm.is("combat"_s));
+    ASSERT_EQ(LifecycleContext::State::Combat, ctx.state);
     ASSERT_EQ(1, ctx.patrol_exit);
     ASSERT_EQ(1, ctx.combat_entry);
 
     // 敵を見失うと patrol に戻り、patrol_entry が再度増える。
     sm.process_event(EvEnemyLost{});
-    ASSERT_TRUE(sm.is("patrol"_s));
+    ASSERT_EQ(LifecycleContext::State::Patrol, ctx.state);
     ASSERT_EQ(2, ctx.patrol_entry);
 }
 
