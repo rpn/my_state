@@ -14,9 +14,9 @@ enum class ContextState {
 
 
 struct OnInput {
-    float delta_time;
-    float input_power;
-    bool jump = false;
+	float delta_time;
+	float input_power;
+	bool jump = false;
 };
 
 struct Context {
@@ -30,41 +30,44 @@ auto is_running = [](const OnInput& e) { return e.input_power >= 0.8f; };
 auto is_jumping = [](const OnInput& e) { return e.jump == true; };
 
 struct GroundSm {
-    auto operator()() const {
-        using namespace sml;
+	auto operator()() const {
+		using namespace sml;
 
-        auto to_idle = [](Context& pl) { pl.state = ContextState::IDLE; };
-        auto to_walk = [](Context& pl) { pl.state = ContextState::WALK; };
-        auto to_run = [](Context& pl) { pl.state = ContextState::RUN; };
-        
-        return make_transition_table(
-	        *state<class IDLE> + on_entry<_> / to_idle,
-	        state<class WALK> + on_entry<_> / to_walk,
-	        state<class RUN> + on_entry<_> / to_run,
+		auto to_idle = [](Context& pl) { pl.state = ContextState::IDLE; };
+		auto to_walk = [](Context& pl) { pl.state = ContextState::WALK; };
+		auto to_run = [](Context& pl) { pl.state = ContextState::RUN; };
+		
+		return make_transition_table(
+			*state<class IDLE> + on_entry<_> / to_idle,
+			state<class WALK> + on_entry<_> / to_walk,
+			state<class RUN> + on_entry<_> / to_run,
 
-	        *state<class IDLE> + event<OnInput> [is_walking] = state<class WALK>,
-	        state<class IDLE> + event<OnInput> [is_running] = state<class RUN>,
-	        state<class WALK> + event<OnInput> [is_running] = state<class RUN>,
-	        state<class WALK> + event<OnInput> [is_idle] = state<class IDLE>,
-	        state<class RUN> + event<OnInput> [is_walking] = state<class WALK>,
-	        state<class RUN> + event<OnInput> [is_idle] = state<class IDLE>
-        );
-    }
+			state<IDLE> + event<OnInput> [is_walking] = state<WALK>,
+			state<IDLE> + event<OnInput> [is_running] = state<RUN>,
+
+			state<WALK> + event<OnInput> [is_running] = state<RUN>,
+			state<WALK> + event<OnInput> [is_idle] = state<IDLE>,
+		  
+			state<RUN> + event<OnInput> [is_walking] = state<WALK>,
+			state<RUN> + event<OnInput> [is_idle] = state<IDLE>
+		);
+	}
 };
 
 struct MovementSm {
-    auto operator()() const {
-        using namespace sml;
+	auto operator()() const {
+		using namespace sml;
 
 		auto to_jump = [](Context& pl) { pl.state = ContextState::JUMP; };
 
-        return make_transition_table(
-	        *state<GroundSm> + event<OnInput> [is_jumping] / to_jump = state<class JUMP>,
-	        state<class JUMP> + event<OnInput> [is_idle] = state<GroundSm>,
-	        state<class JUMP> + event<OnInput> [is_walking] = state<GroundSm>,
-	        state<class JUMP> + event<OnInput> [is_running] = state<GroundSm>
-        );
-    }
+		return make_transition_table(
+			*state<GroundSm> + event<OnInput> [is_jumping] / to_jump = state<class JUMP>,
+
+			state<JUMP> + event<OnInput> [is_running] = state<GroundSm>,
+			state<JUMP> + event<OnInput> [is_walking] = state<GroundSm>,
+			state<JUMP> + event<OnInput> [is_idle] = state<GroundSm>
+		);
+	}
 };
 
 struct Player: Context {
@@ -84,21 +87,21 @@ struct Player: Context {
 TEST(MySml2, test1)
 {
 	Context ctx;
-    ASSERT_EQ(ContextState::IDLE, ctx.state);
-    ASSERT_EQ(0.0f, ctx.speed);
+	ASSERT_EQ(ContextState::IDLE, ctx.state);
+	ASSERT_EQ(0.0f, ctx.speed);
 
-    Player pl;
-    ASSERT_EQ(ContextState::IDLE, pl.state);
-    //ASSERT_EQ(0.0f, ctx.speed);
+	Player pl;
+	ASSERT_EQ(ContextState::IDLE, pl.state);
+	//ASSERT_EQ(0.0f, ctx.speed);
 
-    pl.update(1.0f, 0.1f, false);
-    ASSERT_EQ(ContextState::WALK, pl.state);
+	pl.update(1.0f, 0.1f, false);
+	ASSERT_EQ(ContextState::WALK, pl.state);
 
-    pl.update(1.0f, 0.1f, true);
-    ASSERT_EQ(ContextState::JUMP, pl.state);
+	pl.update(1.0f, 0.1f, true);
+	ASSERT_EQ(ContextState::JUMP, pl.state);
 
-    pl.update(1.0f, 0.1f, false);
-    ASSERT_EQ(ContextState::WALK, pl.state);
+	pl.update(1.0f, 0.1f, false);
+	ASSERT_EQ(ContextState::IDLE, pl.state);
 }
 
 } // namespace my_sml_2
