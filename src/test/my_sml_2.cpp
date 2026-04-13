@@ -92,6 +92,7 @@ TEST(MySml2, test1)
 
 	pl.update(1.0f, 0.1f, false);
 	ASSERT_FALSE(pl.sm.is("jump"_s));
+	ASSERT_TRUE(pl.sm.is("walk"_s));
 }
 
 } // namespace my_sml_2
