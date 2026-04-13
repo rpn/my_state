@@ -38,16 +38,16 @@ struct grounded_sm {
         auto to_run = [](Context& ctx) { ctx.state = MovementState::Run; };
         
         return make_transition_table(
-	        *"idle"_s + on_entry<_> / to_idle,
-	        "walk"_s + on_entry<_> / to_walk,
-	        "run"_s + on_entry<_> / to_run,
+	        *state<class Idle> + on_entry<_> / to_idle,
+	        state<class Walk> + on_entry<_> / to_walk,
+	        state<class Run> + on_entry<_> / to_run,
 
-	        *"idle"_s + event<on_update> [is_walking] = "walk"_s,
-	        "idle"_s + event<on_update> [is_running] = "run"_s,
-	        "walk"_s + event<on_update> [is_running] = "run"_s,
-	        "walk"_s + event<on_update> [is_idle] = "idle"_s,
-	        "run"_s + event<on_update> [is_walking] = "walk"_s,
-	        "run"_s + event<on_update> [is_idle] = "idle"_s
+	        *state<class Idle> + event<on_update> [is_walking] = state<class Walk>,
+	        state<class Idle> + event<on_update> [is_running] = state<class Run>,
+	        state<class Walk> + event<on_update> [is_running] = state<class Run>,
+	        state<class Walk> + event<on_update> [is_idle] = state<class Idle>,
+	        state<class Run> + event<on_update> [is_walking] = state<class Walk>,
+	        state<class Run> + event<on_update> [is_idle] = state<class Idle>
         );
     }
 };
@@ -59,8 +59,8 @@ struct character_movement {
 		auto to_jump = [](Context& ctx) { ctx.state = MovementState::Jump; };
 
         return make_transition_table(
-	        *state<grounded_sm> + event<on_update> [is_jumping] / to_jump = "jump"_s,
-	        "jump"_s + event<on_update> [is_idle] = state<grounded_sm>
+	        *state<grounded_sm> + event<on_update> [is_jumping] / to_jump = state<class Jump>,
+	        state<class Jump> + event<on_update> [is_idle] = state<grounded_sm>
         );
     }
 };
