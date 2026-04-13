@@ -111,7 +111,11 @@ TEST(SmlTest3, test1)
 	ASSERT_EQ(MovementState::Idle, pl.state);
 
 	pl.update(1.0f, 1.0f, true);
+	ASSERT_EQ(MovementState::Run, pl.state);
 	ASSERT_EQ(MovementState::Jump, pl.state);
+
+	pl.update(1.0f, 0.1f, false);
+	ASSERT_EQ(MovementState::Walk, pl.state);
 }
 
 } // namespace my_sml_3
