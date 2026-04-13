@@ -115,7 +115,15 @@ TEST(SmlTest3, test1)
 
 	pl.update(1.0f, 0.1f, false);
 	ASSERT_EQ(MovementState::Idle, pl.state);
-	//ASSERT_EQ(MovementState::Walk, pl.state);
+
+	pl.update(1.0f, 1.0f, false);
+	ASSERT_EQ(MovementState::Run, pl.state);
+
+	pl.update(1.0f, 1.0f, true);
+	ASSERT_EQ(MovementState::Jump, pl.state);
+
+	pl.update(1.0f, 1.0f, false);
+	ASSERT_EQ(MovementState::Run, pl.state);
 }
 
 } // namespace my_sml_3
