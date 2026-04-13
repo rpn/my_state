@@ -1,16 +1,9 @@
-// my_sml_2.cpp
+﻿// my_sml_2.cpp
 #include <gtest/gtest.h>
 #include <boost/sml.hpp>
 
 namespace my_sml_2 {
 namespace sml = boost::sml;
-
-enum class ContextState {
-	IDLE,
-	WALK,
-	RUN,
-	JUMP,
-};
 
 
 struct OnInput {
@@ -21,7 +14,6 @@ struct OnInput {
 
 struct Context {
 	float speed {};
-	ContextState state {};
 };
 
 auto is_idle    = [](const OnInput& e) { return e.input_power < 0.1f; };
@@ -32,24 +24,16 @@ auto is_jumping = [](const OnInput& e) { return e.jump == true; };
 struct GroundSm {
 	auto operator()() const {
 		using namespace sml;
-
-		auto to_idle = [](Context& pl) { pl.state = ContextState::IDLE; };
-		auto to_walk = [](Context& pl) { pl.state = ContextState::WALK; };
-		auto to_run = [](Context& pl) { pl.state = ContextState::RUN; };
 		
 		return make_transition_table(
-			*state<class IDLE> + on_entry<_> / to_idle,
-			state<class WALK> + on_entry<_> / to_walk,
-			state<class RUN> + on_entry<_> / to_run,
+			*"idle"_s + event<OnInput> [is_walking] = "walk"_s,
+			"idle"_s + event<OnInput> [is_running] = "run"_s,
 
-			state<IDLE> + event<OnInput> [is_walking] = state<WALK>,
-			state<IDLE> + event<OnInput> [is_running] = state<RUN>,
-
-			state<WALK> + event<OnInput> [is_running] = state<RUN>,
-			state<WALK> + event<OnInput> [is_idle] = state<IDLE>,
+			"walk"_s + event<OnInput> [is_running] = "run"_s,
+			"walk"_s + event<OnInput> [is_idle] = "idle"_s,
 		  
-			state<RUN> + event<OnInput> [is_walking] = state<WALK>,
-			state<RUN> + event<OnInput> [is_idle] = state<IDLE>
+			"run"_s + event<OnInput> [is_walking] = "walk"_s,
+			"run"_s + event<OnInput> [is_idle] = "idle"_s
 		);
 	}
 };
@@ -58,24 +42,19 @@ struct MovementSm {
 	auto operator()() const {
 		using namespace sml;
 
-		auto to_jump = [](Context& pl) { pl.state = ContextState::JUMP; };
-
 		return make_transition_table(
-			*state<GroundSm> + event<OnInput> [is_jumping] / to_jump = state<class JUMP>,
+			*state<GroundSm> + event<OnInput> [is_jumping] = "jump"_s,
 
-			state<JUMP> + event<OnInput> [is_running] = state<GroundSm>,
-			state<JUMP> + event<OnInput> [is_walking] = state<GroundSm>,
-			state<JUMP> + event<OnInput> [is_idle] = state<GroundSm>
+			"jump"_s + event<OnInput> [is_running] = state<GroundSm>,
+			"jump"_s + event<OnInput> [is_walking] = state<GroundSm>,
+			"jump"_s + event<OnInput> [is_idle] = state<GroundSm>
 		);
 	}
 };
 
 struct Player: Context {
 	sml::sm<MovementSm> sm;
-	Player()
-		: sm(static_cast<Context&>(*this))
-	{
-	}
+	Player() = default;
 
 	void update(float delta_time, float input_power, bool jump)
 	{
@@ -86,22 +65,33 @@ struct Player: Context {
 
 TEST(MySml2, test1)
 {
+	using sml::literals::operator""_s;
+
 	Context ctx;
-	ASSERT_EQ(ContextState::IDLE, ctx.state);
 	ASSERT_EQ(0.0f, ctx.speed);
 
+	// GroundSm 単体で idle/walk/run の遷移を確認する。
+	sml::sm<GroundSm> ground_sm;
+	ASSERT_TRUE(ground_sm.is("idle"_s));
+	ground_sm.process_event(OnInput{1.0f, 0.1f, false});
+	ASSERT_TRUE(ground_sm.is("walk"_s));
+	ground_sm.process_event(OnInput{1.0f, 1.0f, false});
+	ASSERT_TRUE(ground_sm.is("run"_s));
+	ground_sm.process_event(OnInput{1.0f, 0.0f, false});
+	ASSERT_TRUE(ground_sm.is("idle"_s));
+
 	Player pl;
-	ASSERT_EQ(ContextState::IDLE, pl.state);
+	ASSERT_FALSE(pl.sm.is("jump"_s));
 	//ASSERT_EQ(0.0f, ctx.speed);
 
 	pl.update(1.0f, 0.1f, false);
-	ASSERT_EQ(ContextState::WALK, pl.state);
+	ASSERT_FALSE(pl.sm.is("jump"_s));
 
 	pl.update(1.0f, 0.1f, true);
-	ASSERT_EQ(ContextState::JUMP, pl.state);
+	ASSERT_TRUE(pl.sm.is("jump"_s));
 
 	pl.update(1.0f, 0.1f, false);
-	ASSERT_EQ(ContextState::IDLE, pl.state);
+	ASSERT_FALSE(pl.sm.is("jump"_s));
 }
 
 } // namespace my_sml_2
