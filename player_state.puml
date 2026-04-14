@@ -1,0 +1,7 @@
+@startuml
+skinparam backgroundColor white
+
+idle --> jump : OnJump / play_sound
+jump --> idle : OnTick [is_time_up]
+
+@enduml

@@ -4,6 +4,7 @@
 #include <fmt/printf.h>
 
 #include "my_logger.h"
+#include "sml_dump.h"
 
 namespace sml_p3 {
 namespace sml = boost::sml;
@@ -95,6 +96,7 @@ TEST(SmlP3, test1)
 		"[process_event] Foo>\n"
 		"[action] <lambda_1> Foo>", extract(buf));
 
+	sml_util::dump(sm);
 }
 
 struct MySm2 {
@@ -163,6 +165,9 @@ TEST(SmlP3, test2)
 		"[process_event] Foo>\n"
 		"[process_event] Foo>\n"
 		"[action] <lambda_1> Foo>", extract(buf));
+
+	dump_with_composite<MySm>(sm);
+	//dump(sm);
 }
 
 
