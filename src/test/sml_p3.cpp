@@ -96,7 +96,7 @@ TEST(SmlP3, test1)
 		"[process_event] Foo>\n"
 		"[action] <lambda_1> Foo>", extract(buf));
 
-	sml_util::dump(sm);
+	dump(sm);
 }
 
 struct MySm2 {
@@ -167,7 +167,6 @@ TEST(SmlP3, test2)
 		"[action] <lambda_1> Foo>", extract(buf));
 
 	dump_with_composite<MySm>(sm);
-	//dump(sm);
 }
 
 
