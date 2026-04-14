@@ -1,9 +1,13 @@
 ﻿// sml_p3.cpp
 #include <gtest/gtest.h>
 #include <boost/sml.hpp>
+#include <fmt/printf.h>
+
+#include "my_logger.h"
 
 namespace sml_p3 {
 namespace sml = boost::sml;
+using namespace sml_util;
 
 enum class MyState {
 	Foo,
@@ -20,7 +24,6 @@ struct Foo {};
 struct Bar {};
 struct Baz {};
 } // namespace st
-
 
 namespace tr1 {
 struct MySm {
@@ -54,59 +57,42 @@ struct MySm {
 	}
 };
 
-
-struct MyLogger {
-	bool short_name = true;
-
-	// ① イベントが処理されようとした時に呼ばれる
-	template <class SM, class TEvent>
-	void log_process_event(const TEvent&) {
-		printf("[process_event] %s\n", 
-			sml::aux::get_type_name<TEvent>());
-	}
-
-	// ② ガード条件が評価された結果をログに出す
-	template <class SM, class TGuard, class TEvent>
-	void log_guard(const TGuard&, const TEvent&, bool result) {
-		printf("[guard] %s %s %s\n", 
-			sml::aux::get_type_name<TGuard>(),
-			sml::aux::get_type_name<TEvent>(), 
-			(result ? "[OK]" : "[Reject]"));
-	}
-
-	// ③ アクションが実行された時に呼ばれる
-	template <class SM, class TAction, class TEvent>
-	void log_action(const TAction&, const TEvent&) {
-		printf("[action] %s %s\n", 
-			sml::aux::get_type_name<TAction>(),
-			sml::aux::get_type_name<TEvent>());
-	}
-
-	// ④ 状態が実際に遷移した時に呼ばれる
-	template <class SM, class TSrcState, class TDstState>
-	void log_state_change(const TSrcState& src, const TDstState& dst) {
-		// src と dst には状態名を文字列として取得できる c_str() が用意されています
-		printf("[transition] %s -> %s\n", 
-			src.c_str(), 
-			dst.c_str());
-	}
-};
-
 TEST(SmlP3, test1)
 {
-	MyLogger logger;
 	Context ctx;
+	std::vector<std::string> buf;
+	MyLogger logger;
+	logger.p_buffer = &buf;
 	sml::sm<MySm, sml::logger<MyLogger>> sm{ctx, logger};
 	ASSERT_EQ(MyState::Foo, ctx.state);
+	ASSERT_EQ(
+		"[process_event] initial>\n"
+		"[action] <lambda_1> initial>", extract(buf));
 
 	sm.process_event(st::Bar{});
 	ASSERT_EQ(MyState::Bar, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Bar\n"
+		"[transition] Foo -> Bar\n"
+		"[process_event] Bar>\n"
+		"[action] <lambda_2> Bar>", extract(buf));
 
 	sm.process_event(st::Baz{});
 	ASSERT_EQ(MyState::Baz, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Baz\n"
+		"[transition] Bar -> Baz\n"
+		"[process_event] Baz>\n"
+		"[action] <lambda_3> Baz>", extract(buf));
 
 	sm.process_event(st::Foo{});
 	ASSERT_EQ(MyState::Foo, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Foo\n"
+		"[transition] Baz -> Foo\n"
+		"[process_event] Foo>\n"
+		"[action] <lambda_1> Foo>", extract(buf));
+
 }
 } // namespace tr1
 

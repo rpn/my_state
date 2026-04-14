@@ -40,6 +40,9 @@ attributes:
   - 'set(CMAKE_CXX_STANDARD 20)'
   - 'set(CMAKE_CXX_STANDARD_REQUIRED ON)'
   - 'set(CMAKE_CXX_EXTENSIONS OFF)'
+  - 'add_definitions(-DFMT_HEADER_ONLY)'
+  - 'add_compile_options("/utf-8")'
+  - 'add_compile_options("/wd5030")'
 
   SEARCH_PATHS:
   - src
@@ -48,6 +51,7 @@ attributes:
   INCLUDES:
   - @googletest
   - "{{@googletest}}/include"
+  - @locals/$at(includes/fmt, '../fmt/include')
   - @sml
 
   CLEANS:
