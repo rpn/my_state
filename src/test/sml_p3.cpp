@@ -13,6 +13,7 @@ enum class MyState {
 	Foo,
 	Bar,
 	Baz,
+	Quax,
 };
 
 struct Context {
@@ -23,6 +24,7 @@ namespace st {
 struct Foo {};
 struct Bar {};
 struct Baz {};
+struct Quax {};
 } // namespace st
 
 namespace tr1 {
@@ -59,11 +61,11 @@ struct MySm {
 
 TEST(SmlP3, test1)
 {
-	Context ctx;
 	std::vector<std::string> buf;
-	MyLogger logger;
-	logger.p_buffer = &buf;
+	MyLogger logger{&buf};
+	Context ctx;
 	sml::sm<MySm, sml::logger<MyLogger>> sm{ctx, logger};
+
 	ASSERT_EQ(MyState::Foo, ctx.state);
 	ASSERT_EQ(
 		"[process_event] initial>\n"
@@ -94,6 +96,76 @@ TEST(SmlP3, test1)
 		"[action] <lambda_1> Foo>", extract(buf));
 
 }
+
+struct MySm2 {
+	auto operator()() const {
+		using namespace sml;
+
+		auto to_quax = [](Context& ctx) -> void
+		{
+			ctx.state = MyState::Quax;
+		};
+
+		return make_transition_table(
+			*state<MySm> + event<st::Quax> = state<st::Quax>
+			,state<st::Quax> + on_entry<_> / to_quax
+
+			,state<st::Quax> + event<st::Foo> = state<MySm>
+		);
+	}
+};
+
+TEST(SmlP3, test2)
+{
+	std::vector<std::string> buf;
+	MyLogger logger{&buf};
+	Context ctx;
+	sml::sm<MySm2, sml::logger<MyLogger>> sm{ctx, logger};
+
+	ASSERT_EQ(
+		"[process_event] initial>\n"
+		"[process_event] initial>\n"
+		"[action] <lambda_1> initial>", extract(buf));
+
+	ASSERT_EQ(MyState::Foo, ctx.state);
+
+	sm.process_event(st::Bar{});
+	ASSERT_EQ(MyState::Bar, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Bar\n"
+		"[process_event] Bar\n"
+		"[transition] Foo -> Bar\n"
+		"[process_event] Bar>\n"
+		"[action] <lambda_2> Bar>", extract(buf));
+
+	sm.process_event(st::Baz{});
+	ASSERT_EQ(MyState::Baz, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Baz\n"
+		"[process_event] Baz\n"
+		"[transition] Bar -> Baz\n"
+		"[process_event] Baz>\n"
+		"[action] <lambda_3> Baz>", extract(buf));
+
+	sm.process_event(st::Quax{});
+	ASSERT_EQ(MyState::Quax, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Quax\n"
+		"[transition] MySm -> Quax\n"
+		"[process_event] Quax>\n"
+		"[action] <lambda_1> Quax>", extract(buf));
+
+	sm.process_event(st::Foo{});
+	ASSERT_EQ(MyState::Foo, ctx.state);
+	ASSERT_EQ(
+		"[process_event] Foo\n"
+		"[transition] Quax -> MySm\n"
+		"[process_event] Foo>\n"
+		"[process_event] Foo>\n"
+		"[action] <lambda_1> Foo>", extract(buf));
+}
+
+
 } // namespace tr1
 
 } // namespace sml_p3

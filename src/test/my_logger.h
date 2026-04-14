@@ -9,8 +9,8 @@ namespace sml_util {
 namespace sml = boost::sml;
 
 struct MyLogger {
-	bool short_name = true;
 	std::vector<std::string>* p_buffer = nullptr;
+	bool short_name = true;
 
 	const char* short_or_full(const char* name) const
 	{
