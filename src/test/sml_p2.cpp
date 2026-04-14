@@ -26,14 +26,14 @@ bool is_running(float input_power)
 } // namespace logic
 
 struct OnInput {
-    float input_power = 0;
+	float input_power = 0;
 };
 
 struct OnJump {
 };
 
 struct OnLanded {
-    float input_power = 0;
+	float input_power = 0;
 };
 
 auto is_idle    = [](const OnInput& e) { return logic::is_idle(e.input_power); };
@@ -45,10 +45,11 @@ auto is_walking_j = [](const OnLanded& e) { return logic::is_walking(e.input_pow
 auto is_running_j = [](const OnLanded& e) { return logic::is_running(e.input_power); };
 
 enum class MovementState {
-    Idle,
-    Walk,
-    Run,
-    Jump,
+	Idle,
+	Walk,
+	Run,
+	Dash,
+	Jump,
 };
 
 struct Context {
@@ -62,35 +63,37 @@ namespace st {
 struct Idle {};
 struct Walk {};
 struct Run {};
+struct Dash {};
 struct Jump {};
 } // namespace st
 
 
+namespace tr1 {
 struct MovementSm {
-    auto operator()() const {
-        using namespace sml;
+	auto operator()() const {
+		using namespace sml;
 
-        auto to_idle = [](Context& ctx) -> void
-        {
-        	ctx.state = MovementState::Idle;
-        };
-        auto to_walk = [](Context& ctx) -> void
-        {
-        	ctx.state = MovementState::Walk;
-        };
-        auto to_run = [](Context& ctx) -> void
-        {
-        	ctx.state = MovementState::Run;
-        };
-        auto to_jump = [](Context& ctx) -> void
-        {
-        	ctx.state = MovementState::Jump;
-        	ctx.is_ground = false;
-        };
-        auto to_land = [](Context& ctx) -> void
-        {
-        	ctx.is_ground = true;
-        };
+		auto to_idle = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Idle;
+		};
+		auto to_walk = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Walk;
+		};
+		auto to_run = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Run;
+		};
+		auto to_jump = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Jump;
+			ctx.is_ground = false;
+		};
+		auto to_land = [](Context& ctx) -> void
+		{
+			ctx.is_ground = true;
+		};
 
 		return make_transition_table(
 			*state<st::Idle> + on_entry<_> / to_idle
@@ -98,7 +101,7 @@ struct MovementSm {
 			,state<st::Run> + on_entry<_> / to_run
 			,state<st::Jump> + on_entry<_> / to_jump
 
-            ,state<_> + event<OnJump> [is_ground] = state<st::Jump>
+			,state<_> + event<OnJump> [is_ground] = state<st::Jump>
 
 			,state<st::Idle> + event<OnInput> [is_walking] = state<st::Walk>
 			,state<st::Idle> + event<OnInput> [is_running] = state<st::Run>
@@ -113,7 +116,7 @@ struct MovementSm {
 			,state<st::Jump> + event<OnLanded> [is_running_j] / to_land = state<st::Run>
 			,state<st::Jump> + event<OnLanded> [is_idle_j] / to_land = state<st::Idle>
 		);
-    }
+	}
 };
 
 
@@ -158,4 +161,270 @@ TEST(SmlP2, test1)
 	ASSERT_EQ(MovementState::Idle, ctx.state);
 }
 
+} // namespace tr1
+
+namespace tr2 {
+
+struct OnLanded {
+};
+
+struct PressDash {
+};
+
+struct ReleaseDash {
+};
+
+struct Grounded {
+	auto operator()() const {
+		using namespace sml;
+
+		auto to_idle = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Idle;
+		};
+		auto to_walk = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Walk;
+		};
+		auto to_run = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Run;
+		};
+
+		return make_transition_table(
+			*state<st::Idle> + on_entry<_> / to_idle
+			,state<st::Walk> + on_entry<_> / to_walk
+			,state<st::Run> + on_entry<_> / to_run
+
+			,state<st::Idle> + event<OnInput> [is_walking] = state<st::Walk>
+			,state<st::Idle> + event<OnInput> [is_running] = state<st::Run>
+
+			,state<st::Walk> + event<OnInput> [is_running] = state<st::Run>
+			,state<st::Walk> + event<OnInput> [is_idle] = state<st::Idle>
+
+			,state<st::Run> + event<OnInput> [is_walking] = state<st::Walk>
+			,state<st::Run> + event<OnInput> [is_idle] = state<st::Idle>
+
+		);
+	}
+};
+
+struct DashGroundSm {
+	auto operator()() const {
+		using namespace sml;
+
+		auto to_dash = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Dash;
+		};
+
+		return make_transition_table(
+			*state<Grounded> + event<PressDash> = state<st::Dash>
+			,state<st::Dash> + on_entry<_> / to_dash
+			,state<st::Dash> + event<ReleaseDash> = state<Grounded>
+		);
+	}
+};
+
+struct MovementSm {
+	auto operator()() const {
+		using namespace sml;
+
+		auto to_jump = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Jump;
+			ctx.is_ground = false;
+		};
+		auto to_land = [](Context& ctx, const OnLanded&) -> void
+		{
+			ctx.is_ground = true;
+		};
+
+		auto to_dash = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Dash;
+		};
+
+		return make_transition_table(
+			*state<Grounded> + event<OnJump> [is_ground] / to_jump = state<st::Jump>
+			,state<Grounded> + event<PressDash> = state<st::Dash>
+
+			,state<st::Jump> + on_entry<_> / to_jump
+			,state<st::Dash> + on_entry<_> / to_dash
+
+			,state<st::Jump> + event<OnLanded> / to_land = state<Grounded>
+			,state<st::Dash> + event<ReleaseDash> = state<Grounded>
+		);
+	}
+};
+
+struct MovementSm2 {
+	auto operator()() const {
+		using namespace sml;
+
+		auto to_jump = [](Context& ctx) -> void
+		{
+			ctx.state = MovementState::Jump;
+			ctx.is_ground = false;
+		};
+		auto to_land = [](Context& ctx, const OnLanded&) -> void
+		{
+			ctx.is_ground = true;
+		};
+
+		return make_transition_table(
+			*state<DashGroundSm> + event<OnJump> [is_ground] / to_jump = state<st::Jump>
+			,state<st::Jump> + on_entry<_> / to_jump
+			,state<st::Jump> + event<OnLanded> / to_land = state<DashGroundSm>
+		);
+	}
+};
+
+TEST(SmlP2, test_and_jump)
+{
+	Context ctx;
+	sml::sm<MovementSm> sm{ctx};
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+}
+
+TEST(SmlP2, dash)
+{
+	Context ctx;
+	sml::sm<DashGroundSm> sm{ctx};
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(PressDash{});
+	ASSERT_EQ(MovementState::Dash, ctx.state);
+	sm.process_event(ReleaseDash{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+}
+
+TEST(SmlP2, dash_and_jump)
+{
+	Context ctx;
+	sml::sm<MovementSm> sm{ctx};
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(PressDash{});
+	ASSERT_EQ(MovementState::Dash, ctx.state);
+	sm.process_event(ReleaseDash{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+}
+
+TEST(SmlP2, dash_and_jump2)
+{
+	Context ctx;
+	sml::sm<MovementSm2> sm{ctx};
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(PressDash{});
+	ASSERT_EQ(MovementState::Dash, ctx.state);
+	sm.process_event(ReleaseDash{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+	ASSERT_TRUE(ctx.is_ground);
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	sm.process_event(OnInput{1.0f});
+	ASSERT_EQ(MovementState::Run, ctx.state);
+
+	sm.process_event(OnJump{});
+	ASSERT_EQ(MovementState::Jump, ctx.state);
+	sm.process_event(OnLanded{});
+	sm.process_event(OnInput{0.1f});
+	ASSERT_EQ(MovementState::Walk, ctx.state);
+	sm.process_event(OnInput{});
+	ASSERT_EQ(MovementState::Idle, ctx.state);
+
+}
+
+} // namespace tr2
 } // namespace sml_p2
