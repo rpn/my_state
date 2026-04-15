@@ -14,7 +14,7 @@ attributes:
   TARGET: 'main.exe'
 
   googletest: @locals/$at(includes/googletest, '../googletest/googletest')
-  sml: 'D:/usr/prj/cpp/sml/include'
+  sml: @locals/$at(includes/sml, '../sml/include')
 
   DEFAULT: @locals/$at(default, $build_cmake)
   EXCLUDES:
